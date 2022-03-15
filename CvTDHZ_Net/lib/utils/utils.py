@@ -14,7 +14,7 @@ import tensorwatch as tw
 import torch
 import torch.backends.cudnn as cudnn
 
-from utils.comm import comm
+from comm import comm
 from ptflops import get_model_complexity_info
 
 

@@ -9,10 +9,14 @@ import torch
 from timm.data import Mixup
 from torch.cuda.amp import autocast
 
-from core.evaluate import accuracy
-from utils.comm import comm
+from evaluate import accuracy
+from ..utils.comm import comm
 
-
+"""
+    需要改造的点：
+                1. 不需要Accuracy
+                2. 需要添加 PSNR 和 SSIM 数值的显示
+"""
 def train_one_epoch(config, train_loader, model, criterion, optimizer, epoch,
                     output_dir, tb_log_dir, writer_dict, scaler=None):
     batch_time = AverageMeter()

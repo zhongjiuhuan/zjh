@@ -24,7 +24,7 @@ _C.PRINT_FREQ = 20
 _C.RANK = 0
 _C.VERBOSE = True
 _C.WORKERS = 4
-_C.MODEL_SUMMARY = False
+_C.MODEL_SUMMARY = True
 
 _C.AMP = CN()
 _C.AMP.ENABLED = False

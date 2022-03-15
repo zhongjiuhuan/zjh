@@ -13,6 +13,11 @@ import torchvision.datasets as datasets
 from .transformas import build_transforms
 from .samplers import RASampler
 
+'''
+    需要改造的点：
+            1. 添加RESIDE数据集的build函数
+'''
+
 
 def build_dataset(cfg, is_train):
     dataset = None
@@ -32,13 +37,24 @@ def _build_image_folder_dataset(cfg, is_train):
     )
     logging.info(
         '=> load samples: {}, is_train: {}'
-        .format(len(dataset), is_train)
+            .format(len(dataset), is_train)
     )
 
     return dataset
 
 
 def _build_imagenet_dataset(cfg, is_train):
+    transforms = build_transforms(cfg, is_train)
+
+    dataset_name = cfg.DATASET.TRAIN_SET if is_train else cfg.DATASET.TEST_SET
+    dataset = datasets.ImageFolder(
+        os.path.join(cfg.DATASET.ROOT, dataset_name), transforms
+    )
+
+    return dataset
+
+
+def _build_reside_dataset(cfg, is_train):
     transforms = build_transforms(cfg, is_train)
 
     dataset_name = cfg.DATASET.TRAIN_SET if is_train else cfg.DATASET.TEST_SET

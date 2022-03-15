@@ -139,7 +139,7 @@ def main():
                             scaler=scaler)
         logging.info(
             '=> {} train end, duration: {:.2f}s'
-            .format(head, time.time()-start)
+                .format(head, time.time() - start)
         )
 
         # evaluate on validation set
@@ -158,12 +158,12 @@ def main():
 
         logging.info(
             '=> {} validate end, duration: {:.2f}s'
-            .format(head, time.time()-val_start)
+                .format(head, time.time() - val_start)
         )
 
-        lr_scheduler.step(epoch=epoch+1)
+        lr_scheduler.step(epoch=epoch + 1)
         if config.TRAIN.LR_SCHEDULER.METHOD == 'timm':
-            lr = lr_scheduler.get_epoch_values(epoch+1)[0]
+            lr = lr_scheduler.get_epoch_values(epoch + 1)[0]
         else:
             lr = lr_scheduler.get_last_lr()[0]
         logging.info(f'=> lr: {lr}')
@@ -191,7 +191,7 @@ def main():
 
         logging.info(
             '=> {} epoch end, duration : {:.2f}s'
-            .format(head, time.time()-start)
+                .format(head, time.time() - start)
         )
 
     save_model_on_master(
@@ -200,7 +200,7 @@ def main():
 
     if config.SWA.ENABLED and comm.is_main_process():
         save_model_on_master(
-             args.distributed, final_output_dir, 'swa_state.pth'
+            args.distributed, final_output_dir, 'swa_state.pth'
         )
 
     writer_dict['writer'].close()
