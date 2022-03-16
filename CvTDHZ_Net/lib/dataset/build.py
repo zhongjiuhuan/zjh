@@ -8,60 +8,33 @@ import os
 from timm.data import create_loader
 import torch
 import torch.utils.data
-import torchvision.datasets as datasets
-
-from .transformas import build_transforms
 from .samplers import RASampler
-
-'''
-    需要改造的点：
-            1. 添加RESIDE数据集的build函数
-'''
+from reside import DatasetRESIDE
 
 
 def build_dataset(cfg, is_train):
     dataset = None
-    if 'imagenet' in cfg.DATASET.DATASET:
-        dataset = _build_imagenet_dataset(cfg, is_train)
+    if 'reside' in cfg.DATASET.DATASET:
+        dataset = _build_reside_dataset(cfg, is_train)
     else:
         raise ValueError('Unkown dataset: {}'.format(cfg.DATASET.DATASET))
     return dataset
 
 
-def _build_image_folder_dataset(cfg, is_train):
-    transforms = build_transforms(cfg, is_train)
+def _build_reside_dataset(cfg, is_train):
+    if is_train:
+        dataset = DatasetRESIDE(L_path=cfg.DATASET.TRAIN.L_PATH, H_path=cfg.DATASET.TRAIN.H_PATH,
+                                H_format=cfg.DATASET.TRAIN.H_FORMAT,
+                                patch_size=cfg.DATASET.PATCH_SIZE, n_channels=cfg.DATASET.N_CHANNELS, is_train=is_train)
+    else:
+        dataset = DatasetRESIDE(L_path=cfg.DATASET.VAL.L_PATH, H_path=cfg.DATASET.VAL.H_PATH,
+                                H_format=cfg.VAL.DATASET.H_FORMAT,
+                                patch_size=cfg.DATASET.PATCH_SIZE, n_channels=cfg.DATASET.N_CHANNELS, is_train=is_train)
 
-    dataset_name = cfg.DATASET.TRAIN_SET if is_train else cfg.DATASET.TEST_SET
-    dataset = datasets.ImageFolder(
-        os.path.join(cfg.DATASET.ROOT, dataset_name), transforms
-    )
     logging.info(
         '=> load samples: {}, is_train: {}'
             .format(len(dataset), is_train)
     )
-
-    return dataset
-
-
-def _build_imagenet_dataset(cfg, is_train):
-    transforms = build_transforms(cfg, is_train)
-
-    dataset_name = cfg.DATASET.TRAIN_SET if is_train else cfg.DATASET.TEST_SET
-    dataset = datasets.ImageFolder(
-        os.path.join(cfg.DATASET.ROOT, dataset_name), transforms
-    )
-
-    return dataset
-
-
-def _build_reside_dataset(cfg, is_train):
-    transforms = build_transforms(cfg, is_train)
-
-    dataset_name = cfg.DATASET.TRAIN_SET if is_train else cfg.DATASET.TEST_SET
-    dataset = datasets.ImageFolder(
-        os.path.join(cfg.DATASET.ROOT, dataset_name), transforms
-    )
-
     return dataset
 
 

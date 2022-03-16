@@ -36,7 +36,7 @@ from lib.utils.utils import save_model_on_master
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Train classification network')
+        description='Train dehazing network')
 
     parser.add_argument('--cfg',
                         help='experiment configure file name',

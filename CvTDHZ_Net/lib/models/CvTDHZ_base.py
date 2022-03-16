@@ -1,13 +1,10 @@
-from functools import partial
 from itertools import repeat
 from torch._six import container_abcs
 
 import logging
-import os
 from collections import OrderedDict
 
 import numpy as np
-import scipy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,8 +13,7 @@ from einops.layers.torch import Rearrange
 
 from timm.models.layers import DropPath, trunc_normal_
 
-
-# from .registry import register_model
+from .registry import register_model
 
 
 # From PyTorch internals
@@ -512,9 +508,9 @@ class VisionTransformer(nn.Module):
 
 
 class CvTDHZ(nn.Module):
-    def __init__(self, in_chans=3, output_chans=3, ngf=64, depth=[2, 2, 2], mlp_ratio=[4.0, 4.0, 4.0],
-                 attn_drop_rate=[0.0, 0.0, 0.0], drop_rate=[0.0, 0.0, 0.0], drop_path_rate=[0.0, 0.0, 0.0],
-                 QKV_bias=[True, True, True]):
+    def __init__(self, in_chans=3, output_chans=3, ngf=64, depth=(2, 2, 2), mlp_ratio=(4.0, 4.0, 4.0),
+                 attn_drop_rate=(0.0, 0.0, 0.0), drop_rate=(0.0, 0.0, 0.0), drop_path_rate=(0.0, 0.0, 0.0),
+                 QKV_bias=(True, True, True)):
         super(CvTDHZ, self).__init__()
         #### downsample
         self.down1 = nn.Sequential(nn.ReflectionPad2d(3),
@@ -579,63 +575,37 @@ class CvTDHZ(nn.Module):
         up4 = self.up4(up3 + x_down1)
         return up4[:, :, 0:h, 0:w]
 
-    # @register_model
 
+@register_model
+def get_dhz_model(config, **kwargs):
+    cvtdhz_spec = config.MODEL.SPEC
+    cvtdhz = CvTDHZ(
+        in_chans=cvtdhz_spec.IN_CHANS,
+        output_chans=cvtdhz_spec.OUTPUT_CHANS,
+        ngf=cvtdhz_spec.NGF,
+        depth=cvtdhz_spec.DEPTH,
+        mlp_ratio=cvtdhz_spec.MLP_RATIO,
+        attn_drop_rate=cvtdhz_spec.ATTN_DROP_RATE,
+        drop_rate=cvtdhz_spec.DROP_RATE,
+        drop_path_rate=cvtdhz_spec.DROP_PATH_RATE,
+        QKV_bias=cvtdhz_spec.QKV_BIAS
+    )
 
-# def get_cls_model(config, **kwargs):
-#     msvit_spec = config.MODEL.SPEC
-#     msvit = ConvolutionalVisionTransformer(
-#         in_chans=3,
-#         num_classes=config.MODEL.NUM_CLASSES,
-#         act_layer=QuickGELU,
-#         norm_layer=partial(LayerNorm, eps=1e-5),
-#         init=getattr(msvit_spec, 'INIT', 'trunc_norm'),
-#         spec=msvit_spec
-#     )
-#
-#     if config.MODEL.INIT_WEIGHTS:
-#         msvit.init_weights(
-#             config.MODEL.PRETRAINED,
-#             config.MODEL.PRETRAINED_LAYERS,
-#             config.VERBOSE
-#         )
-#
-#     return msvit
+    if config.MODEL.INIT_WEIGHTS:
+        cvtdhz.init_weights(
+            config.MODEL.PRETRAINED,
+            config.MODEL.PRETRAINED_LAYERS,
+            config.VERBOSE
+        )
+
+    return cvtdhz
 
 
 if __name__ == '__main__':
     model = CvTDHZ()
     model.eval()
     model.cuda(1)
-    # in_chans = 3
-    # ngf = 64
-    # down1 = VisionTransformer(in_chans=in_chans, embed_dim=ngf, patch_size=7, patch_stride=2, patch_padding=2,
-    #                           num_heads=1,
-    #                           depth=1, mlp_ratio=4.0, attn_drop_rate=0.0, drop_rate=0.0, drop_path_rate=0.0,
-    #                           qkv_bias=True)
-    # down2 = VisionTransformer(in_chans=ngf, embed_dim=ngf * 2, patch_size=3, patch_stride=2, patch_padding=1,
-    #                           num_heads=2,
-    #                           depth=1, mlp_ratio=4.0, attn_drop_rate=0.0, drop_rate=0.0, drop_path_rate=0.0,
-    #                           qkv_bias=True)
-    # down1 = VisionTransformer(patch_size=7, patch_stride=1, patch_padding=0, embed_dim=64, num_heads=1,
-    #                           depth=1, mlp_ratio=4.0, attn_drop_rate=0.0, drop_rate=0.0, drop_path_rate=0.0,
-    #                           qkv_bias=True)
-    # up1 = VisionTransformer(in_chans=64, patch_size=3, patch_stride=2, patch_padding=1, transpose=True,
-    #                         output_padding=1,
-    #                         embed_dim=3, num_heads=1,
-    #                         depth=2, mlp_ratio=4.0, attn_drop_rate=0.0, drop_rate=0.0, drop_path_rate=0.0,
-    #                         qkv_bias=True)
-    # embed = ConvEmbed(patch_size=7, stride=1, in_chans=3, embed_dim=64, padding=0, norm_layer=nn.LayerNorm)
-    # transpose_embed = TransposeConvEmbed(3, 3, 3, 2, 1, 1)
 
     x = torch.randn((1, 3, 480, 640)).cuda(1)
     x = model(x)
-    # x = down1(x)
-    # print(x.shape)
-    #
-    # x = down2(x)
-    # x = embed(x)
-    # x = up1(x)
-    # x = transpose_embed(x)
-
     print(x.shape)

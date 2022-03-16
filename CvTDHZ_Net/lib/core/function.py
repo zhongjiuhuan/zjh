@@ -9,21 +9,18 @@ import torch
 from timm.data import Mixup
 from torch.cuda.amp import autocast
 
-from evaluate import accuracy
+from evaluate import calculate_psnr
+from evaluate import calculate_ssim
 from ..utils.comm import comm
 
-"""
-    需要改造的点：
-                1. 不需要Accuracy
-                2. 需要添加 PSNR 和 SSIM 数值的显示
-"""
+
 def train_one_epoch(config, train_loader, model, criterion, optimizer, epoch,
                     output_dir, tb_log_dir, writer_dict, scaler=None):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
+    psnrs = AverageMeter()
+    ssims = AverageMeter()
 
     logging.info('=> switch to train mode')
     model.train()
@@ -59,7 +56,7 @@ def train_one_epoch(config, train_loader, model, criterion, optimizer, epoch,
         # compute gradient and do update step
         optimizer.zero_grad()
         is_second_order = hasattr(optimizer, 'is_second_order') \
-            and optimizer.is_second_order
+                          and optimizer.is_second_order
 
         scaler.scale(loss).backward(create_graph=is_second_order)
 
@@ -79,10 +76,11 @@ def train_one_epoch(config, train_loader, model, criterion, optimizer, epoch,
 
         if mixup_fn:
             y = torch.argmax(y, dim=1)
-        prec1, prec5 = accuracy(outputs, y, (1, 5))
+        ssim = calculate_ssim(x, y)
+        psnr = calculate_psnr(x, y)
 
-        top1.update(prec1, x.size(0))
-        top5.update(prec5, x.size(0))
+        ssims.update(ssim, x.size(0))
+        psnrs.update(psnr, x.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -94,12 +92,12 @@ def train_one_epoch(config, train_loader, model, criterion, optimizer, epoch,
                   'Speed {speed:.1f} samples/s\t' \
                   'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
                   'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
-                  'Accuracy@1 {top1.val:.3f} ({top1.avg:.3f})\t' \
-                  'Accuracy@5 {top5.val:.3f} ({top5.avg:.3f})\t'.format(
-                      epoch, i, len(train_loader),
-                      batch_time=batch_time,
-                      speed=x.size(0)/batch_time.val,
-                      data_time=data_time, loss=losses, top1=top1, top5=top5)
+                  'PSNR {psnrs.val:.2f} ({psnrs.avg:.2f})\t' \
+                  'SSIM {ssims.val:.4f} ({ssims.avg:.4f})\t'.format(
+                epoch, i, len(train_loader),
+                batch_time=batch_time,
+                speed=x.size(0) / batch_time.val,
+                data_time=data_time, loss=losses, psnrs=psnrs, ssims=ssims)
             logging.info(msg)
 
         torch.cuda.synchronize()
@@ -108,18 +106,19 @@ def train_one_epoch(config, train_loader, model, criterion, optimizer, epoch,
         writer = writer_dict['writer']
         global_steps = writer_dict['train_global_steps']
         writer.add_scalar('train_loss', losses.avg, global_steps)
-        writer.add_scalar('train_top1', top1.avg, global_steps)
+        writer.add_scalar('train_psnr', psnrs.avg, global_steps)
+        writer.add_scalar('train_ssim', ssims.avg, global_steps)
         writer_dict['train_global_steps'] = global_steps + 1
 
 
 @torch.no_grad()
 def test(config, val_loader, model, criterion, output_dir, tb_log_dir,
-         writer_dict=None, distributed=False, real_labels=None,
+         writer_dict=None, distributed=False,
          valid_labels=None):
     batch_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
+    psnrs = AverageMeter()
+    ssims = AverageMeter()
 
     logging.info('=> switch to eval mode')
     model.eval()
@@ -136,15 +135,14 @@ def test(config, val_loader, model, criterion, output_dir, tb_log_dir,
 
         loss = criterion(outputs, y)
 
-        if real_labels and not distributed:
-            real_labels.add_result(outputs)
-
         # measure accuracy and record loss
         losses.update(loss.item(), x.size(0))
 
-        prec1, prec5 = accuracy(outputs, y, (1, 5))
-        top1.update(prec1, x.size(0))
-        top5.update(prec5, x.size(0))
+        ssim = calculate_ssim(x, y)
+        psnr = calculate_psnr(x, y)
+
+        ssims.update(ssim, x.size(0))
+        psnrs.update(psnr, x.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -152,50 +150,33 @@ def test(config, val_loader, model, criterion, output_dir, tb_log_dir,
 
     logging.info('=> synchronize...')
     comm.synchronize()
-    top1_acc, top5_acc, loss_avg = map(
+    psnr_avg, ssim_avg, loss_avg = map(
         _meter_reduce if distributed else lambda x: x.avg,
-        [top1, top5, losses]
+        [psnrs, ssims, losses]
     )
-
-    if real_labels and not distributed:
-        real_top1 = real_labels.get_accuracy(k=1)
-        real_top5 = real_labels.get_accuracy(k=5)
-        msg = '=> TEST using Reassessed labels:\t' \
-            'Error@1 {error1:.3f}%\t' \
-            'Error@5 {error5:.3f}%\t' \
-            'Accuracy@1 {top1:.3f}%\t' \
-            'Accuracy@5 {top5:.3f}%\t'.format(
-                top1=real_top1,
-                top5=real_top5,
-                error1=100-real_top1,
-                error5=100-real_top5
-            )
-        logging.info(msg)
 
     if comm.is_main_process():
         msg = '=> TEST:\t' \
-            'Loss {loss_avg:.4f}\t' \
-            'Error@1 {error1:.3f}%\t' \
-            'Error@5 {error5:.3f}%\t' \
-            'Accuracy@1 {top1:.3f}%\t' \
-            'Accuracy@5 {top5:.3f}%\t'.format(
-                loss_avg=loss_avg, top1=top1_acc,
-                top5=top5_acc, error1=100-top1_acc,
-                error5=100-top5_acc
-            )
+              'Loss {loss_avg:.4f}\t' \
+              'psnr {psnr:.2f}%\t' \
+              'ssim {ssim:.4f}%\t'.format(
+            loss_avg=loss_avg, ssim=ssim_avg,
+            psnr=psnr_avg
+        )
         logging.info(msg)
 
     if writer_dict and comm.is_main_process():
         writer = writer_dict['writer']
         global_steps = writer_dict['valid_global_steps']
         writer.add_scalar('valid_loss', loss_avg, global_steps)
-        writer.add_scalar('valid_top1', top1_acc, global_steps)
+        writer.add_scalar('valid_psnr', psnr_avg, global_steps)
+        writer.add_scalar('valid_ssim', ssim_avg, global_steps)
         writer_dict['valid_global_steps'] = global_steps + 1
 
     logging.info('=> switch to train mode')
     model.train()
 
-    return top1_acc
+    return psnr_avg
 
 
 def _meter_reduce(meter):
@@ -211,6 +192,7 @@ def _meter_reduce(meter):
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
+
     def __init__(self):
         self.reset()
 
