@@ -65,8 +65,8 @@ _C.DATASET.TARGET_SIZE = -1
 
 # training data augmentation
 _C.INPUT = CN()
-_C.INPUT.MEAN = [0.485, 0.456, 0.406]
-_C.INPUT.STD = [0.229, 0.224, 0.225]
+_C.INPUT.MEAN = [0.655, 0.617, 0.605]    # ITS:[0.655, 0.617, 0.605]        # OTS: [0.5850742, 0.60061955, 0.6041104]
+_C.INPUT.STD = [0.168, 0.174, 0.183]     # ITS:[0.168, 0.174, 0.183]        # OTS: [0.20963186, 0.21278831, 0.23134892]
 
 # data augmentation
 _C.AUG = CN()
